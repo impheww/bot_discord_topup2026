@@ -293,17 +293,30 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ===== ผ่านเบื้องต้น =====
         pending_links[interaction.user.id] = link_value
 
-        res = requests.post(
-            "https://YOUR_RENDER_URL/check",
-            json={
-                "user_id": interaction.user.id,
-                "link": link_value
-            }
-        )
+        try:
+            res = requests.post(
+                "https://discord-role-bot-backend.onrender.com/check",
+                json={
+                    "user_id": interaction.user.id,
+                    "link": link_value
+                },
+                timeout=10
+            )
 
-        data = res.json()
+            if res.status_code != 200:
+                await msg.edit(content=f"❌ Backend error ({res.status_code})")
+                return
 
-        result = data["result"]
+            data = res.json()
+            result = data.get("result")
+
+            if not result:
+                await msg.edit(content="❌ ข้อมูล backend ไม่ถูกต้อง")
+                return
+
+        except Exception as e:
+            await msg.edit(content=f"❌ Backend error: {e}")
+            return
 
         if not result["success"]:
             embed = discord.Embed(
@@ -314,9 +327,13 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             return
 
         amount = result["amount"]
-        expected_price = ROLE_PRICES[self.role_id]
+        expected_price = ROLE_PRICES.get(self.role_id)
 
-        if amount != expected_price:
+        if expected_price is None:
+            await msg.edit(content="❌ role ผิดพลาด")
+            return
+
+        if abs(amount - expected_price) > 0.01:
             embed = discord.Embed(
                 title="`❌` จำนวนเงินไม่ถูกต้อง",
                 color=discord.Color.red()
@@ -325,9 +342,13 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             return
 
         # ✅ สำเร็จ → ยิง PAID เข้า bot
-        await bot.get_channel(ANGPAO_CHANNEL_ID).send(
-            f"PAID:{interaction.user.id}:{amount}"
-        )
+        channel = bot.get_channel(ANGPAO_CHANNEL_ID)
+
+        if not channel:
+            await msg.edit(content="❌ ไม่พบ channel ระบบ")
+            return
+
+        await channel.send(f"PAID:{interaction.user.id}:{amount}")
 # ==================================================
 #  Dropdown ช่องทางเติมเงิน (ตัวเลือก)
 # ==================================================

@@ -4,6 +4,8 @@ import datetime
 import pytz
 import json
 import requests
+import asyncio
+import re
 import os
 from myserver import server_on
 
@@ -227,10 +229,9 @@ used_links = load_links()
 # =========================
 # ตรวจลิงก์ TrueWallet
 # =========================
-
 def is_valid_angpao(link):
-    return "gift.truemoney.com/campaign/?v=" in link
-
+    pattern = r"^https:\/\/gift\.truemoney\.com\/campaign\/\?v=[a-zA-Z0-9]+$"
+    return re.match(pattern, link) is not None
 # ==================================================
 #  Model กรอกลิ้งก์ + หากกรอกลิ้งก์ถูกหรือผิด + แจ้งเตือนมีคนส่งลิ้งก์อั่งเปา
 # ==================================================
@@ -290,7 +291,8 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
         # ===== ยิง backend =====
         try:
-            res = requests.post(
+            res = await asyncio.to_thread(
+                requests.post,
                 "https://discord-role-bot-backend.onrender.com/redeem",
                 json={
                     "user_id": user_id,
@@ -300,28 +302,75 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             )
 
             if res.status_code != 200:
-                await msg.edit(content=f"`❌` Backend error ({res.status_code})")
+                embed = discord.Embed(
+                    title=f"`❌` ระบบมีปัญหาชั่วคราวโปรดลองใหม่อีกครั้งหรือแจ้งแอดมิน ({res.status_code})",
+                    color=discord.Color.red()
+                )
+                await msg.edit(content=None, embed=embed)
                 return
 
-            data = res.json()
-            status = data.get("status")
+            # ===== ตรวจสถานะ =====
+            try:
+                data = res.json()
+            except ValueError:
+                embed = discord.Embed(
+                    title="`❌` ระบบเกิดข้อผิดพลาด กรุณาแจ้งแอดมิน",
+                    color=discord.Color.red()
+                )
+                await msg.edit(content=None, embed=embed)
+                return
+
+            success = data.get("success")
+
+            if not success:
+                error = data.get("error")
+
+                if error == "invalid":
+                    embed = discord.Embed(
+                        title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
+                        color=discord.Color.red()
+                    )
+                    await msg.edit(content=None, embed=embed)
+                    return
+
+                if error == "used":
+                    embed = discord.Embed(
+                        title="`❌` ลิ้งก์นี้ถูกส่ง/ใช้ไปแล้ว",
+                        color=discord.Color.red()
+                    )
+                    await msg.edit(content=None, embed=embed)
+                    return
+
+                if error == "processing":
+                    embed = discord.Embed(
+                        title="`⏳` มีคนกำลังใช้ลิ้งนี้อยู่",
+                        color=discord.Color.red()
+                    )
+                    await msg.edit(content=None, embed=embed)
+                    return
+
+                await msg.edit(content=f"`❌` Error: {error}")
+                return
+
+        except requests.exceptions.RequestException:
+            embed = discord.Embed(
+                title="`❌` ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            return
 
         except Exception as e:
-            await msg.edit(content=f"`❌` Backend error: {e}")
+            embed = discord.Embed(
+                title="`❌` เกิดข้อผิดพลาดบางอย่าง",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            print("ERROR:", e)
             return
 
-        # ===== ตรวจสถานะ =====
-        if status == "invalid":
-            ...
-            return
-
-        if status == "used":
-            ...
-            return
-
-        if status == "processing":
-            await msg.edit(content="⏳ มีคนกำลังใช้ลิ้งนี้อยู่")
-            return
+        finally:
+            pending_links.pop(user_id, None)
 
         # ✅ SUCCESS
         amount = data.get("amount")
@@ -343,14 +392,10 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ✅ ให้ role ทันที
         await member.add_roles(role)
 
-        # ✅ บันทึก link
-        used_links.add(link_value)
-        save_links()
-
         # ✅ embed
         embed = discord.Embed(
             title="`✅` ซื้อยศสำเร็จ!!",
-            description=f"ได้รับ {role.mention}",
+            description=f"ได้รับ {role.mention}\n\n```หากไม่ได้รับยศภายใน 10 วินาที กรุณาแจ้งแอดมิน```",
             color=discord.Color.green()
         )
 

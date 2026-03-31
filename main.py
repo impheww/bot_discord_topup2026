@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands, tasks
-import re
 import datetime
 import pytz
 import json
@@ -230,10 +229,7 @@ used_links = load_links()
 # =========================
 
 def is_valid_angpao(link):
-
-    pattern = r"https:\/\/gift\.truemoney\.com\/campaign\/\?v=[a-zA-Z0-9]+"
-
-    return re.match(pattern, link)
+    return "gift.truemoney.com/campaign/?v=" in link
 
 # ==================================================
 #  Model กรอกลิ้งก์ + หากกรอกลิ้งก์ถูกหรือผิด + แจ้งเตือนมีคนส่งลิ้งก์อั่งเปา
@@ -275,7 +271,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ===== ตรวจ format =====
         if not is_valid_angpao(link_value):
             embed = discord.Embed(
-                title="`❌` กรุณากรอกลิงค์ซองให้ถูกต้อง!!",
+                title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
@@ -316,45 +312,54 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
         # ===== ตรวจสถานะ =====
         if status == "invalid":
-            embed = discord.Embed(
-                title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
-                color=discord.Color.red()
-            )
-            await msg.edit(content=None, embed=embed)
+            ...
             return
 
         if status == "used":
-            embed = discord.Embed(
-                title="`❌` ซองนี้ถูกใช้ไปแล้ว",
-                color=discord.Color.red()
-            )
-            await msg.edit(content=None, embed=embed)
+            ...
             return
 
-        if status == "expired":
-            embed = discord.Embed(
-                title="`❌` ลิ้งก์ซองนี้หมดอายุแล้ว",
-                color=discord.Color.red()
-            )
-            await msg.edit(content=None, embed=embed)
+        if status == "processing":
+            await msg.edit(content="⏳ มีคนกำลังใช้ลิ้งนี้อยู่")
             return
 
-        # ✅ ผ่าน
+        # ✅ SUCCESS
+        amount = data.get("amount")
+
+        role_id = PRICE_ROLE_MAP.get(amount)
+
+        if not role_id:
+            await msg.edit(content="`❌` ราคาไม่ตรงระบบ")
+            return
+
+        role = interaction.guild.get_role(role_id)
+
+        member = interaction.user
+
+        if role in member.roles:
+            await msg.edit(content="`❌` คุณมียศนี้อยู่แล้ว")
+            return
+
+        # ✅ ให้ role ทันที
+        await member.add_roles(role)
+
+        # ✅ บันทึก link
+        used_links.add(link_value)
+        save_links()
+
+        # ✅ embed
         embed = discord.Embed(
-            title="`✅` ส่งลิ้งก์ซองสำเร็จ",
-            description="```หากไม่ได้ยศโปรดรอแอดมินตรวจสอบและให้ยศ```",
+            title="`✅` ซื้อยศสำเร็จ!!",
+            description=f"ได้รับ {role.mention}",
             color=discord.Color.green()
         )
+
         await msg.edit(content=None, embed=embed)
 
-        # ยิงเข้า system
-        channel = bot.get_channel(ANGPAO_CHANNEL_ID)
-
-        if not channel:
-            await msg.edit(content="❌ ไม่พบ channel ระบบ")
-            return
-
-        await channel.send(f"PAID:{user_id}:0")
+        # ✅ success channel
+        channel = bot.get_channel(SUCCESS_CHANNEL_ID)
+        if channel:
+            await channel.send(embed=create_payment_embed(member, amount, role, link_value))
 # ==================================================
 #  Dropdown ช่องทางเติมเงิน (ตัวเลือก)
 # ==================================================

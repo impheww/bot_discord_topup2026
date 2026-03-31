@@ -257,14 +257,14 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         now = datetime.datetime.now().timestamp()
 
         if user_id in cooldown and now - cooldown[user_id] < 10:
-            await interaction.response.send_message("⏳ รอสักครู่ก่อนส่งใหม่", ephemeral=True)
+            await interaction.response.send_message("⏳ **กรุณารอ 10วิก่อนส่งใหม่**", ephemeral=True)
             return
 
         cooldown[user_id] = now
 
         link_value = self.link.value
 
-        # ===== ส่ง loading (ข้อความล้วน) =====
+        # ===== loading =====
         await interaction.response.defer(ephemeral=True)
 
         msg = await interaction.followup.send(
@@ -275,80 +275,86 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ===== ตรวจ format =====
         if not is_valid_angpao(link_value):
             embed = discord.Embed(
-                title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
+                title="`❌` กรุณากรอกลิงค์ซองให้ถูกต้อง!!",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
             return
 
-        # ===== ลิ้งซ้ำ/ใช้ไปแล้ว =====
+        # ===== ลิ้งซ้ำ =====
         if link_value in used_links:
             embed = discord.Embed(
-                title="`❌` ลิ้งก์ซองอั่งเปานี้ใช้ไปแล้ว",
+                title="`❌` ลิ้งนี้ถูกส่ง/ใช้ไปแล้ว",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
             return
 
-        # ===== ผ่านเบื้องต้น =====
-        pending_links[interaction.user.id] = link_value
+        pending_links[user_id] = link_value
 
+        # ===== ยิง backend =====
         try:
             res = requests.post(
-                "https://discord-role-bot-backend.onrender.com/check",
+                "https://discord-role-bot-backend.onrender.com/redeem",
                 json={
-                    "user_id": interaction.user.id,
+                    "user_id": user_id,
                     "link": link_value
                 },
                 timeout=10
             )
 
             if res.status_code != 200:
-                await msg.edit(content=f"❌ Backend error ({res.status_code})")
+                await msg.edit(content=f"`❌` Backend error ({res.status_code})")
                 return
 
             data = res.json()
-            result = data.get("result")
-
-            if not result:
-                await msg.edit(content="❌ ข้อมูล backend ไม่ถูกต้อง")
-                return
+            status = data.get("status")
 
         except Exception as e:
-            await msg.edit(content=f"❌ Backend error: {e}")
+            await msg.edit(content=f"`❌` Backend error: {e}")
             return
 
-        if not result["success"]:
+        # ===== ตรวจสถานะ =====
+        if status == "invalid":
             embed = discord.Embed(
-                title=f"`❌` {result['reason']}",
+                title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
             return
 
-        amount = result["amount"]
-        expected_price = ROLE_PRICES.get(self.role_id)
-
-        if expected_price is None:
-            await msg.edit(content="❌ role ผิดพลาด")
-            return
-
-        if abs(amount - expected_price) > 0.01:
+        if status == "used":
             embed = discord.Embed(
-                title="`❌` จำนวนเงินไม่ถูกต้อง",
+                title="`❌` ซองนี้ถูกใช้ไปแล้ว",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
             return
 
-        # ✅ สำเร็จ → ยิง PAID เข้า bot
+        if status == "expired":
+            embed = discord.Embed(
+                title="`❌` ลิ้งก์ซองนี้หมดอายุแล้ว",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            return
+
+        # ✅ ผ่าน
+        embed = discord.Embed(
+            title="`✅` ส่งลิ้งก์ซองสำเร็จ",
+            description="```หากไม่ได้ยศโปรดรอแอดมินตรวจสอบและให้ยศ```",
+            color=discord.Color.green()
+        )
+        await msg.edit(content=None, embed=embed)
+
+        # ยิงเข้า system
         channel = bot.get_channel(ANGPAO_CHANNEL_ID)
 
         if not channel:
             await msg.edit(content="❌ ไม่พบ channel ระบบ")
             return
 
-        await channel.send(f"PAID:{interaction.user.id}:{amount}")
+        await channel.send(f"PAID:{user_id}:0")
 # ==================================================
 #  Dropdown ช่องทางเติมเงิน (ตัวเลือก)
 # ==================================================
@@ -365,7 +371,7 @@ class PaymentSelect(discord.ui.Select):
             ),
             discord.SelectOption(
                 label="PromptPay",
-                description="ซื้อผ่านสแกน QR พร้อมเพย์",
+                description="ซื้อผ่านสแกน QR พร้อมเพย์ (ยังไม่เปิดใช้งาน!!)",
                 emoji=discord.PartialEmoji(name="promtpay", id=1472134870368124998)
             ),
         ]

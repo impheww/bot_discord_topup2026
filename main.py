@@ -5,7 +5,6 @@ import pytz
 import json
 import requests
 import asyncio
-import re
 import os
 from myserver import server_on
 
@@ -229,9 +228,9 @@ used_links = load_links()
 # =========================
 # ตรวจลิงก์ TrueWallet
 # =========================
-def is_valid_angpao(link):
-    pattern = r"^https:\/\/gift\.truemoney\.com\/campaign\/\?v=[a-zA-Z0-9]+$"
-    return re.match(pattern, link) is not None
+def is_valid_angpao(url: str) -> bool:
+    url = url.strip().replace("<", "").replace(">", "")
+    return url.startswith("https://gift.truemoney.com/campaign/?v=")
 # ==================================================
 #  Model กรอกลิ้งก์ + หากกรอกลิ้งก์ถูกหรือผิด + แจ้งเตือนมีคนส่งลิ้งก์อั่งเปา
 # ==================================================
@@ -259,7 +258,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
         cooldown[user_id] = now
 
-        link_value = self.link.value
+        link_value = self.link.value.strip().replace("<", "").replace(">", "")
 
         # ===== loading =====
         await interaction.response.defer(ephemeral=True)

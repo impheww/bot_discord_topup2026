@@ -228,9 +228,9 @@ used_links = load_links()
 # =========================
 # ตรวจลิงก์ TrueWallet
 # =========================
-def is_valid_angpao(url: str) -> bool:
-    url = url.strip().replace("<", "").replace(">", "")
-    return url.startswith("https://gift.truemoney.com/campaign/?v=")
+def is_valid_angpao(link: str) -> bool:
+    link = link.strip().replace("<", "").replace(">", "")
+    return "gift.truemoney.com" in link
 # ==================================================
 #  Model กรอกลิ้งก์ + หากกรอกลิ้งก์ถูกหรือผิด + แจ้งเตือนมีคนส่งลิ้งก์อั่งเปา
 # ==================================================
@@ -269,6 +269,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         )
 
         # ===== ตรวจ format =====
+        print("🔍 BOT VALID:", link_value, is_valid_angpao(link_value))
         if not is_valid_angpao(link_value):
             embed = discord.Embed(
                 title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
@@ -297,7 +298,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
                     "user_id": user_id,
                     "link": link_value
                 },
-                timeout=10
+                timeout=30
             )
 
             if res.status_code != 200:
@@ -351,9 +352,10 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
                 await msg.edit(content=f"`❌` Error: {error}")
                 return
 
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            print("❌ BOT ERROR:", e)
             embed = discord.Embed(
-                title="`❌` ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง",
+                title=f"`❌` เชื่อมต่อไม่ได้: {e}",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)

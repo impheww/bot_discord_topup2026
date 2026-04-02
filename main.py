@@ -371,9 +371,6 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             print("ERROR:", e)
             return
 
-        finally:
-            pending_links.pop(user_id, None)
-
         # ✅ SUCCESS
         amount = data.get("amount")
 
@@ -393,6 +390,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
         # ✅ ให้ role ทันที
         await member.add_roles(role)
+        pending_links.pop(user_id, None)
 
         # ✅ embed
         embed = discord.Embed(

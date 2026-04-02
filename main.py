@@ -298,7 +298,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
                     "user_id": user_id,
                     "link": link_value
                 },
-                timeout=30
+                timeout=120
             )
 
             if res.status_code != 200:

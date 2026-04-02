@@ -291,6 +291,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
         # ===== ยิง backend =====
         try:
+            print("🔥 USING TIMEOUT 120")
             res = await asyncio.to_thread(
                 requests.post,
                 "https://discordrolebotbackend-production.up.railway.app/redeem",

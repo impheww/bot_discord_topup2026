@@ -293,7 +293,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         try:
             res = await asyncio.to_thread(
                 requests.post,
-                "https://discord-role-bot-backend.onrender.com/redeem",
+                "https://discordrolebotbackend-production.up.railway.app/redeem",
                 json={
                     "user_id": user_id,
                     "link": link_value

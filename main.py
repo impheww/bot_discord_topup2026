@@ -9,7 +9,7 @@ import os
 from myserver import server_on
 
 # ================= TOKEN =================
-# Token อยู่ใน render
+# Token อยู่ใน railway
 # ================= ID CHANNEL =================
 OWNER_ID = 848068744303083551 # ID admin
 # ================== CHANNEL ==================
@@ -159,12 +159,12 @@ async def on_message(message):
 
             # ❌ ลิ้งซ้ำ
             if link in used_links:
-                await message.channel.send("❌ ลิ้งนี้ถูกใช้ไปแล้ว")
+                await message.channel.send("❌ ลิ้งก์ในซองนี้ถูกใช้ไปแล้ว")
                 return
 
             # ❌ ลิ้งไม่ตรง (กันมั่ว)
             if pending_links.get(member.id) != link:
-                await message.channel.send("❌ ลิ้งไม่ตรง")
+                await message.channel.send("❌ ลิ้งก์ไม่ตรง")
                 return
 
             # ✅ ผ่าน → ค่อยให้ยศ
@@ -253,7 +253,16 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         now = datetime.datetime.now().timestamp()
 
         if user_id in cooldown and now - cooldown[user_id] < 10:
-            await interaction.response.send_message("⏳ **กรุณารอ 10วิก่อนส่งใหม่**", ephemeral=True)
+            remaining = int(10 - (now - cooldown[user_id]))
+            timestamp = int(datetime.datetime.now().timestamp()) + remaining
+
+            embed = discord.Embed(
+                title="⏳ กรุณารอเวลาก่อนส่งใหม่",
+                description=f"คุณสามารถส่งใหม่ได้อีกครั้งใน <t:{timestamp}:R>",
+                color=discord.Color.orange()
+            )
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         cooldown[user_id] = now
@@ -281,8 +290,19 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ===== ลิ้งซ้ำ =====
         if link_value in used_links:
             embed = discord.Embed(
-                title="`❌` ลิ้งนี้ถูกส่ง/ใช้ไปแล้ว",
+                title="`❌` ลิ้งก์นี้เคยถูกส่งไปในระบบแล้ว",
+                description="**```หากคุณกำลังประสบปัญหาซื้อไปแล้วแต่ไม่ได้ยศโปรดติดต่อแอดมินโดยด่วนครับ!```**",
                 color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            return
+
+        # ❗ กัน spam กดหลายครั้งก่อนจบ
+        if user_id in pending_links:
+            embed = discord.Embed(
+                title="`⏳` คุณมีรายการที่กำลังดำเนินการอยู่",
+                description="**```กรุณารอให้รายการก่อนหน้าสำเร็จก่อน```**",
+                color=discord.Color.orange()
             )
             await msg.edit(content=None, embed=embed)
             return
@@ -336,7 +356,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
                 if error == "used":
                     embed = discord.Embed(
-                        title="`❌` ลิ้งก์นี้ถูกส่ง/ใช้ไปแล้ว",
+                        title="`❌` ลิ้งก์ในซองนี้ถูกใช้ไปแล้ว 😓",
                         color=discord.Color.red()
                     )
                     await msg.edit(content=None, embed=embed)
@@ -344,13 +364,18 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
                 if error == "processing":
                     embed = discord.Embed(
-                        title="`⏳` มีคนกำลังใช้ลิ้งนี้อยู่",
-                        color=discord.Color.red()
+                        title="`⏳` มีคนกำลังซื้อยศอยู่จำนวนมาก",
+                        description="**```กรุณารอสักครู่แล้วลองใหม่อีกครั้ง```**",
+                        color=discord.Color.orange()
                     )
                     await msg.edit(content=None, embed=embed)
                     return
 
-                await msg.edit(content=f"`❌` Error: {error}")
+                embed = discord.Embed(
+                    title=f"`❌` ไม่พบลิ้งก์ซองนี้ในระบบ {error}",
+                    color=discord.Color.red()
+                )
+                await msg.edit(content=None, embed=embed)
                 return
 
         except requests.exceptions.RequestException as e:
@@ -374,10 +399,34 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ✅ SUCCESS
         amount = data.get("amount")
 
-        role_id = PRICE_ROLE_MAP.get(amount)
+        # 🔥 DEBUG
+        print(f"💰 amount จาก backend: {amount}")
+        print(f"💰 keys ในระบบ: {list(PRICE_ROLE_MAP.keys())}")
+
+        # 🔥 FIX float
+        amount = float(amount)
+
+        # 🔥 หา role ที่ "ถูกที่สุดที่ user เลือกได้"
+        selected_price = None
+        for price in sorted(PRICE_ROLE_MAP.keys()):
+            if amount >= price:
+                selected_price = price
+
+        if selected_price is None:
+            role_id = None
+        else:
+            role_id = PRICE_ROLE_MAP[selected_price]
+
+        # DEBUG
+        print(f"💰 amount: {amount}")
+        print(f"💰 selected_price: {selected_price}")
 
         if not role_id:
-            await msg.edit(content="`❌` ราคาไม่ตรงระบบ")
+            embed = discord.Embed(
+                title="`❌` ราคาในซองไม่ตรงกับที่เลือก!!",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
             return
 
         role = interaction.guild.get_role(role_id)
@@ -385,7 +434,29 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         member = interaction.user
 
         if role in member.roles:
-            await msg.edit(content="`❌` คุณมียศนี้อยู่แล้ว")
+            embed = discord.Embed(
+                title="`❌` คุณมียศนี้อยู่แล้ว",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            return
+
+        # ❗ กัน amount แปลก
+        if amount <= 0:
+            embed = discord.Embed(
+                title="`❌` จำนวนเงินไม่ถูกต้อง",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
+            return
+
+        # ❗ กัน spam / link ค้าง
+        if user_id not in pending_links:
+            embed = discord.Embed(
+                title="`❌` ไม่พบลิ้งที่กำลังดำเนินการ",
+                color=discord.Color.red()
+            )
+            await msg.edit(content=None, embed=embed)
             return
 
         # ✅ ให้ role ทันที
@@ -395,7 +466,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ✅ embed
         embed = discord.Embed(
             title="`✅` ซื้อยศสำเร็จ!!",
-            description=f"ได้รับ {role.mention}\n\n```หากไม่ได้รับยศภายใน 10 วินาที กรุณาแจ้งแอดมิน```",
+            description=f"คุณได้รับ {role.mention} \n\n```หากไม่ได้รับยศภายใน 10 วินาที กรุณาแจ้งแอดมิน```",
             color=discord.Color.green()
         )
 

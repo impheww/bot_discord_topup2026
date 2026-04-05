@@ -7,9 +7,8 @@ import requests
 import asyncio
 import os
 from myserver import server_on
-
 # ================= TOKEN =================
-# Token อยู่ใน railway
+# Token อยู่ใน render
 # ================= ID CHANNEL =================
 OWNER_ID = 848068744303083551 # ID admin
 # ================== CHANNEL ==================
@@ -39,7 +38,6 @@ def create_base_embed(title, member):
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     return embed
-
 # ================== READY ===================
 @bot.event
 async def on_ready():
@@ -85,129 +83,6 @@ PRICE_ROLE_MAP = {
     50.0: ROLE_03,
     30.0: ROLE_04
 }
-# ================ backend ===================
-@bot.event
-async def on_message(message):
-    if message.author.bot and not message.webhook_id:
-        return
-
-    content = message.content
-    print(f"📩 MESSAGE: {content}")
-
-    if content.startswith("PAID:"):
-
-        if message.author.id != OWNER_ID:
-            return
-
-        try:
-            # TODO: เรียก API TrueWallet จริงตรงนี้
-
-            # ตัวทดสอบ (อยากให้ error ก็เปิด)
-            # raise Exception("หมดอายุ")
-
-            pass
-
-        except Exception as e:
-            print(f"ERROR: {e}")
-            embed = discord.Embed(
-                title="`❌` ลิ้งก์อั่งเปานี้หมดอายุไปแล้ว",
-                color=discord.Color.red()
-            )
-            await message.channel.send(embed=embed)
-            return
-
-        try:
-            _, user_id, amount = content.split(":")
-            user_id = int(user_id)
-            amount = float(amount)
-
-            print(f"👤 user_id: {user_id} | 💰 amount: {amount}")
-
-        except ValueError:
-            print("❌ format PAID ผิด")
-            return
-
-        guild = message.guild
-        member = guild.get_member(user_id)
-
-        if member is None:
-            print("❌ ไม่เจอ user")
-            return
-
-        role_id = PRICE_ROLE_MAP.get(amount)
-
-        if role_id is None:
-            print("❌ ราคาไม่ตรง")
-            return
-
-        role = guild.get_role(role_id)
-
-        if role in member.roles:
-            await message.channel.send(
-                content=f"📢 แจ้งเตือนถึง <@{OWNER_ID}>\n<@{user_id}> ❌ ซื้อยศ {role.mention} ซ้ำ",
-            )
-            await message.delete()
-            return
-
-        if role:
-            link = pending_links.get(member.id)
-
-            # ❌ ไม่มี link = ผิดปกติ
-            if not link:
-                print("❌ ไม่มี link แต่มี PAID")
-                return
-
-            # ❌ ลิ้งซ้ำ
-            if link in used_links:
-                await message.channel.send("❌ ลิ้งก์ในซองนี้ถูกใช้ไปแล้ว")
-                return
-
-            # ❌ ลิ้งไม่ตรง (กันมั่ว)
-            if pending_links.get(member.id) != link:
-                await message.channel.send("❌ ลิ้งก์ไม่ตรง")
-                return
-
-            # ✅ ผ่าน → ค่อยให้ยศ
-            await member.add_roles(role)
-
-            # ✅ บันทึกลิ้ง
-            used_links.add(link)
-            save_links()
-            # ===== success DM =====
-            success_embed = discord.Embed(
-                title="<a:2correct2:1478778308916412487>   ซื้อยศสำเร็จ!!",
-                description=f"<a:tykub:1488140712158691348> **__คุณได้รับยศอัตโนมัติแล้ว!!__** <a:tykub:1488140712158691348>\n\n <:lovepink:1488101192633417798> <#1470997698004914197> ",
-                color=discord.Color.green()
-            )
-
-            try:
-                await member.send(embed=success_embed)
-            except discord.Forbidden:
-                pass
-
-            print(f"✅ ให้ role {role.name} กับ {member}")
-
-            # 👇 ดึง link
-            link = pending_links.get(member.id)
-
-            if not link:
-                print("❌ ไม่มี link แต่มี PAID")
-                return
-
-            embed = create_payment_embed(member, amount, role, link=link)
-
-            await message.channel.send(
-                content=f"📢 แจ้งเตือนถึง <@{OWNER_ID}>",
-                embed=embed
-            )
-
-            # 👇 ลบ link ออกจากระบบ
-            pending_links.pop(member.id, None)
-
-            # 👇 ลบข้อความ PAID
-            await message.delete()
-
-    await bot.process_commands(message)
 # ================ กัน LINK ซ้ำ ===================
 def load_links():
 
@@ -224,7 +99,8 @@ def save_links():
     with open("links.json", "w") as f:
         json.dump(list(used_links), f)
 
-used_links = load_links()
+used_links = load_links()       # ใช้แล้วจริง (backend เท่านั้น)
+submitted_links = set()         # เคยส่ง (frontend)
 # =========================
 # ตรวจลิงก์ TrueWallet
 # =========================
@@ -288,7 +164,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             return
 
         # ===== ลิ้งซ้ำ =====
-        if link_value in used_links:
+        if link_value in submitted_links:
             embed = discord.Embed(
                 title="`❌` ลิ้งก์นี้เคยถูกส่งไปในระบบแล้ว",
                 description="**```หากคุณกำลังประสบปัญหาซื้อไปแล้วแต่ไม่ได้ยศโปรดติดต่อแอดมินโดยด่วนครับ!```**",
@@ -308,6 +184,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             return
 
         pending_links[user_id] = link_value
+        submitted_links.add(link_value)
 
         # ===== ยิง backend =====
         try:
@@ -357,6 +234,14 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
                 if error == "used":
                     embed = discord.Embed(
                         title="`❌` ลิ้งก์ในซองนี้ถูกใช้ไปแล้ว 😓",
+                        color=discord.Color.red()
+                    )
+                    await msg.edit(content=None, embed=embed)
+                    return
+
+                if error == "expired":
+                    embed = discord.Embed(
+                        title="`❌` ลิ้งก์อั่งเปานี้หมดอายุไปแล้ว",
                         color=discord.Color.red()
                     )
                     await msg.edit(content=None, embed=embed)
@@ -458,28 +343,49 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             )
             await msg.edit(content=None, embed=embed)
             return
+        # ถ้า role ที่ให้อยู่สูงกว่า = ให้ยศไม่สำเร็จ
+        if role >= interaction.guild.me.top_role:
+            print("❌ role สูงเกิน")
+            await interaction.response.send_message("❌ ให้ยศไม่สำเร็จ กรุณาติดต่อแอดมิน", ephemeral=True)
+            return
+        # ถ้าเงินมาแต่ให้ยศไม่ได้ = fail
+        try:
+            await member.add_roles(role)
+        except Exception as e:
+            print("❌ ให้ role ไม่สำเร็จ:", e)
+            await interaction.response.send_message("❌ ระบบมีปัญหา กรุณาติดต่อแอดมิน", ephemeral=True)
+            return
 
-        # ✅ ให้ role ทันที
-        await member.add_roles(role)
+        # ✅ บันทึกลิ้งก์ + กันลิ้งก์ซ้ำ (หลังให้ role สำเร็จ)
+        used_links.add(link_value)
+        save_links()
+        # ✅ ลบจาก submitted (กันค้าง)
+        submitted_links.discard(link_value)
+
         pending_links.pop(user_id, None)
 
         # ✅ embed
         embed = discord.Embed(
             title="`✅` ซื้อยศสำเร็จ!!",
-            description=f"คุณได้รับ {role.mention} \n\n```หากไม่ได้รับยศภายใน 10 วินาที กรุณาแจ้งแอดมิน```",
+            description=f"คุณได้รับ {role.mention} แล้ว!\n\n```หากไม่ได้รับยศภายใน 10 วินาที กรุณาแจ้งแอดมิน```",
             color=discord.Color.green()
         )
 
         await msg.edit(content=None, embed=embed)
 
         # ✅ success channel
-        channel = bot.get_channel(SUCCESS_CHANNEL_ID)
-        if channel:
-            await channel.send(embed=create_payment_embed(member, amount, role, link_value))
+        angpao_channel = bot.get_channel(ANGPAO_CHANNEL_ID)
+
+        embed = create_payment_embed(member, amount, role, link_value)
+
+        if angpao_channel:
+            await angpao_channel.send(
+                content=f"📢 แจ้งเตือนถึง <@{OWNER_ID}>",
+                embed=embed
+            )
 # ==================================================
 #  Dropdown ช่องทางเติมเงิน (ตัวเลือก)
 # ==================================================
-
 class PaymentSelect(discord.ui.Select):
 
     def __init__(self):
@@ -596,11 +502,9 @@ class RoleSelect(discord.ui.Select):
             view=ConfirmView(role_id),
             ephemeral=True
         )
-
 # ==================================================
 #  ConfirmView (ปุ่มยืนยัน/ยกเลิก)
 # ==================================================
-
 class RoleSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -618,7 +522,6 @@ class ConfirmView(discord.ui.View):
     @discord.ui.button(label="ยกเลิก", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, _):
         await interaction.response.edit_message(content="❌ ยกเลิกแล้ว", embed=None, view=None)
-
 # ==================================================
 #  PriceView (ปุ่มซื้อยศ/ปิดหน้าต่าง)
 # ==================================================
@@ -663,11 +566,9 @@ class PriceView(discord.ui.View):
             embed=embed,
             view=None
         )
-
 # ==================================================
 #  View เมนูหลัก (ปุ่มซื้อ + เลือกช่องทางเติมเงิน)
 # ==================================================
-
 class MainView(discord.ui.View):
 
     def __init__(self):
@@ -737,7 +638,6 @@ class MainView(discord.ui.View):
             ephemeral=True,
             allowed_mentions=discord.AllowedMentions(roles=True)
         )
-
 # ==================================================
 #  embed ซื้อยศสำเร็จ (ส่วนของ ระบบอั่งเปา)
 # ==================================================
@@ -802,11 +702,9 @@ async def send_purchase_success(member: discord.Member, role: discord.Role, give
 
     msg = await channel.send(embed=embed)
     await msg.add_reaction("✅")
-
 # ==================================================
 #  คำสั่งเปิดร้าน !shop
 # ==================================================
-
 @bot.command()
 async def shop(ctx):
 
@@ -832,7 +730,6 @@ async def shop(ctx):
 # ==================================================
 #  ระบบให้ยศขึ้น embed ซื้อสำเร็จ
 # ==================================================
-
 @bot.event
 async def on_member_update(before, after):
     # เช็ค role ที่เพิ่มเข้ามา
@@ -858,11 +755,9 @@ async def on_member_update(before, after):
                 giver = bot.get_user(OWNER_ID)
 
             await send_purchase_success(after, role, giver)
-
 # ==================================================
 #  ระบบส่งข้อความลูปทุกๆ 1 ชั่วโมง (ระบบอั่งเปา)
 # ==================================================
-
 @bot.command()
 async def testloop(ctx):
     await ctx.send("ทดสอบระบบลูป...")
@@ -908,17 +803,11 @@ async def hourly_loop():
 
     # ข้อความที่ 2 (รูป GIF 1 รูป)
     gif1 = await channel.send("https://i.postimg.cc/7Lt8PrZM/rainbow-water-falling.gif")
-
     last_messages = [msg1, gif1]
-
 # ================ TEST BOT ==================
-
 @bot.command()
 async def ping(ctx):
     await ctx.send("pong")
-
 # ================= RUN =================
-
 server_on()
-
 bot.run(os.getenv('TOKEN'))

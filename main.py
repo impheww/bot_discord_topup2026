@@ -191,7 +191,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             print("🔥 USING TIMEOUT 60")
             res = await asyncio.to_thread(
                 requests.post,
-                "https://discordrolebotbackend-production-18bd.up.railway.app/redeem",
+                "https://discordrolebotbackend-production.up.railway.app/redeem",
                 json={
                     "user_id": user_id,
                     "link": link_value

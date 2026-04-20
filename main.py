@@ -8,7 +8,7 @@ import asyncio
 import os
 from myserver import server_on
 # ================= TOKEN =================
-# Token อยู่ใน render
+# Token อยู่ใน railway.app
 # ================= ID CHANNEL =================
 OWNER_ID = 848068744303083551 # ID admin
 # ================== CHANNEL ==================
@@ -225,7 +225,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
                 if error == "invalid":
                     embed = discord.Embed(
-                        title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
+                        title="`❌` กรุณากรอกลิงก์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
                         color=discord.Color.red()
                     )
                     await msg.edit(content=None, embed=embed)

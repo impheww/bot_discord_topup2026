@@ -15,21 +15,24 @@ OWNER_ID = 848068744303083551 # ID admin
 LOG_CHANNEL_ID = 1470417750319960168 # ห้อง embed บอทซื้อยศอั่งเปา + ส่งข้อความลูปทุกๆ 1 ชั่วโมง
 ANGPAO_CHANNEL_ID = 1470403835234357258 # ห้องคนส่งลิ้งก์อั่งเปามาให้ (ห้องรับตังค์)
 SUCCESS_CHANNEL_ID = 1470997698004914197 # embed ซื้อยศสำเร็จ
+SLIP_CHANNEL_ID = 1505473817928011836 # ห้องคนส่งสลิป
 # ================== ROLE ==================
 ROLE_01 = 1082885961953853540 # บทบาท 1
 ROLE_02 = 1082668970718527508 # บทบาท 2
 ROLE_03 = 1082667309254054008 # บทบาท 3
 ROLE_04 = 1082667313163157515 # บทบาท 4
+PROMPTPAY_ROLE = 1505116616256520282 # บทบาทกำลังเติมเงิน (ส่งสลิปธนาคาร)
 # ================= INTENTS =================
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
-intents.message_content = True
+intents.message_content = False
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 cooldown = {}
 pending_links = {}
+temporary_roles = {}
 # ================= BASE EMBED =================
 def create_base_embed(title, member):
     embed = discord.Embed(
@@ -45,9 +48,12 @@ async def on_ready():
     print("===================================")
     print(f"Bot Online: {bot.user}")
     print("===================================")
+    await bot.tree.sync()
     if not hourly_loop.is_running():
         hourly_loop.start()
         print("✅ hourly_loop started")
+        if not remove_expired_roles.is_running():
+            remove_expired_roles.start()
 # =========== embed แจ้งเตือน/คนส่งลิ้งก์ ===========
 def create_payment_embed(member, amount, role, link=None, status="SUCCESS"):
     color = 0x00ff00 if status == "SUCCESS" else 0xff0000
@@ -159,7 +165,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         print("🔍 BOT VALID:", link_value, is_valid_angpao(link_value))
         if not is_valid_angpao(link_value):
             embed = discord.Embed(
-                title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
+                title="`❌` กรุณากรอกลิงก์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
                 color=discord.Color.red()
             )
             await msg.edit(content=None, embed=embed)
@@ -193,7 +199,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
             print("🔥 USING TIMEOUT 60")
             res = await asyncio.to_thread(
                 requests.post,
-                "https://discordrolebotbackend-production-a3a8.up.railway.app/redeem",
+                "https://discordrolebotbackend-production.up.railway.app/redeem",
                 json={
                     "user_id": user_id,
                     "link": link_value
@@ -235,7 +241,7 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
 
                 if error == "invalid":
                     embed = discord.Embed(
-                        title="`❌` กรุณากรอกลิงค์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
+                        title="`❌` กรุณากรอกลิงก์ที่อยู่ซองอั่งเปาให้ถูกต้อง!!",
                         color=discord.Color.red()
                     )
                     await msg.edit(content=None, embed=embed)
@@ -372,6 +378,11 @@ class AngpaoModal(discord.ui.Modal, title="( กรุณากรอกลิ�
         # ถ้าเงินมาแต่ให้ยศไม่ได้ = fail
         try:
             await member.add_roles(role)
+
+            temporary_roles[member.id] = {
+                "role_id": role.id,
+                "expire": discord.utils.utcnow().timestamp() + 300
+            }
         except Exception as e:
             pending_links.pop(user_id, None)
             submitted_links.discard(link_value)
@@ -423,12 +434,12 @@ class PaymentSelect(discord.ui.Select):
         options = [
             discord.SelectOption(
                 label="True Wallet",
-                description="ซื้อด้วยซองอั่งเปา True Wallet",
+                description="ซื้อด้วยลิ้งก์ซองอั่งเปา True Wallet",
                 emoji=discord.PartialEmoji(name="angpao", id=1472134389763932350, animated=True)
             ),
             discord.SelectOption(
                 label="PromptPay",
-                description="ซื้อผ่านสแกน QR พร้อมเพย์ (ยังไม่เปิดใช้งาน!!)",
+                description="ซื้อผ่านสแกน QR พร้อมเพย์",
                 emoji=discord.PartialEmoji(name="promtpay", id=1472134870368124998)
             ),
         ]
@@ -454,11 +465,15 @@ class PaymentSelect(discord.ui.Select):
             )
 
         elif choice == "PromptPay":
-            embed = discord.Embed(
-                title="`❌` **ช่องทาง __PromptPay__ ยังไม่เปิดใช้งาน**:pray:",
-                color=discord.Color.red()
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="ꔛ เลือกยศและราคาที่ต้องการซื้อ ꔛ",
+                    description="เลือกยศที่ต้องการซื้อผ่าน PromptPay",
+                    color=0x5C67ED
+                ),
+                view=PromptPayRoleView(),
+                ephemeral=True
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class PaymentView(discord.ui.View):
 
@@ -542,6 +557,91 @@ class RoleSelectView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(RoleSelect())
 
+class PromptPayRoleView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(PromptPayRoleSelect())
+class PromptPayRoleSelect(discord.ui.Select):
+
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="𝐕𝐈𝐏・เห็นทุกห้อง + กลุ่มแรร์ๆ ꒰149บาท꒱",
+                value=str(ROLE_01),
+                description="ราคา 149.-",
+                emoji=discord.PartialEmoji(name="star_1", id=1472134208993497202, animated=True)
+            ),
+            discord.SelectOption(
+                label="𝐕𝐈𝐏・นานาชาติ ꒰79บาท꒱",
+                value=str(ROLE_02),
+                description="ราคา 79.-",
+                emoji=discord.PartialEmoji(name="star_1", id=1472134208993497202, animated=True)
+            ),
+            discord.SelectOption(
+                label="𝐕𝐈𝐏・𝑶𝒏𝒍𝒚𝒇𝒂𝒏𝒔 ꒰50บาท꒱",
+                value=str(ROLE_03),
+                description="ราคา 50.-",
+                emoji=discord.PartialEmoji(name="star_1", id=1472134208993497202, animated=True)
+            ),
+            discord.SelectOption(
+                label="𝐕𝐈𝐏・H/ANIME ꒰30บาท꒱",
+                value=str(ROLE_04),
+                description="ราคา 30.-",
+                emoji=discord.PartialEmoji(name="star_1", id=1472134208993497202, animated=True)
+            ),
+        ]
+
+        super().__init__(
+            placeholder="[ 🛒 เลือกประเภทยศและราคา ]",
+            options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+
+        price = float(self.values[0])
+
+        expire = int(discord.utils.utcnow().timestamp()) + 300
+
+        embed = discord.Embed(
+            title="💳 ชำระผ่านพร้อมเพย์",
+            color=0x2B2D31
+        )
+
+        embed.add_field(
+            name="⏰ กรุณาชำระภายใน 5 นาที",
+            value=f"เหลือเวลา <t:{expire}:R>",
+            inline=False
+        )
+
+        embed.add_field(
+            name="💰 จำนวนเงินที่ต้องชำระ",
+            value=f"```{price:.2f} THB```",
+            inline=False
+        )
+
+        embed.set_image(
+            url="https://i.postimg.cc/Kz5LgWMv/QR-promtpay.jpg"
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            view=PromptPayButtonView(),
+            ephemeral=True
+        )
+class PromptPayButtonView(discord.ui.View):
+
+    @discord.ui.button(
+        label="โอนแล้วกรุณาแนบสลิป",
+        style=discord.ButtonStyle.success
+    )
+    async def slip(self, interaction: discord.Interaction, _):
+        channel = interaction.guild.get_channel(SLIP_CHANNEL_ID)
+
+        await interaction.response.send_message(
+            f"ส่งสลิปได้ที่ {channel.mention}",
+            ephemeral=True
+        )
+
 class ConfirmView(discord.ui.View):
     def __init__(self, role_id):
         super().__init__(timeout=None)
@@ -567,8 +667,8 @@ class PriceView(discord.ui.View):
         super().__init__(timeout=60)
 
     @discord.ui.button(
-        label="ซื้อด้วยอั่งเปา",
-        emoji=discord.PartialEmoji(name="truewallet_icon", id=1484455894283714701),
+        label="เติมเงิน",
+        emoji=discord.PartialEmoji(name="star1", id=1472134208993497202),
         style=discord.ButtonStyle.success
     )
     async def buy(self, interaction: discord.Interaction, _):
@@ -614,8 +714,8 @@ class MainView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="ซื้อด้วยอั่งเปา",
-        emoji=discord.PartialEmoji(name="truewallet_icon", id=1484455894283714701),
+        label="เติมเงิน",
+        emoji=discord.PartialEmoji(name="star1", id=1472134208993497202),
         style=discord.ButtonStyle.green
     )
     async def topup(self, interaction: discord.Interaction, _):
@@ -668,7 +768,7 @@ class MainView(discord.ui.View):
         )
 
         embed.set_footer(
-            text="🧧 ชำระผ่านซองอั่งเปา TrueWallet เท่านั้น"
+            text="ไม่คืนเงินทุกกรณี โปรดตรวจสอบความถูกต้อง"
         )
 
         await interaction.response.send_message(
@@ -681,10 +781,29 @@ class MainView(discord.ui.View):
 # ==================================================
 #  embed ซื้อยศสำเร็จ (ส่วนของ ระบบอั่งเปา)
 # ==================================================
-@bot.command()
-async def testembedsuccess(ctx):
-    role = ctx.guild.get_role(ROLE_01)
-    await send_purchase_success(ctx.author, role, bot.user)
+@bot.tree.command(
+    name="testembedsuccess",
+    description="ทดสอบ Embed แจ้งซื้อยศสำเร็จ"
+)
+async def testembedsuccess(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return
+
+    role = interaction.guild.get_role(ROLE_01)
+
+    if role is None:
+        await interaction.response.send_message(
+            "ไม่พบยศที่กำหนด",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "กำลังส่ง Embed ทดสอบ",
+        ephemeral=True
+    )
+
+    await send_purchase_success(interaction.user, role, bot.user)
 
 async def send_purchase_success(member: discord.Member, role: discord.Role, giver):
     channel = bot.get_channel(SUCCESS_CHANNEL_ID)
@@ -743,14 +862,18 @@ async def send_purchase_success(member: discord.Member, role: discord.Role, give
     msg = await channel.send(embed=embed)
     await msg.add_reaction("✅")
 
-# ==================================================
-#  คำสั่งเปิดร้าน !shop
-# ==================================================
+# ===============================
+# คำสั่งเปิดร้าน /shop
+# ===============================
 
-@bot.command()
-async def shop(ctx):
+@bot.tree.command(name="shop", description="เปิดร้านซื้อยศอัตโนมัติ")
+async def shop(interaction: discord.Interaction):
 
-    if ctx.author.id != OWNER_ID:
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message(
+            "คุณไม่มีสิทธิ์ใช้คำสั่งนี้",
+            ephemeral=True
+        )
         return
     # title อั่งเปา
     embed = discord.Embed(
@@ -768,7 +891,10 @@ async def shop(ctx):
         icon_url="https://media.discordapp.net/attachments/1478973402629935206/1483340274594877501/DOHEE_icon_png.png?ex=69be3048&is=69bcdec8&hm=c4674a41bb839e0f49652f7a00f2fcd78eaffb7ed418224d6e75e21a5e4a2368&=&format=webp&quality=lossless"
     )
 
-    await ctx.send(embed=embed, view=MainView())
+    await interaction.response.send_message(
+        embed=embed,
+        view=MainView()
+    )
 # ==================================================
 #  ระบบให้ยศขึ้น embed ซื้อสำเร็จ
 # ==================================================
@@ -798,15 +924,64 @@ async def on_member_update(before, after):
                 giver = bot.get_user(OWNER_ID)
 
             await send_purchase_success(after, role, giver)
+# ================= EMBED SLIP ========================
+@bot.event
+async def on_message(message):
+
+    if message.author.bot:
+        return
+
+    if message.channel.id == SLIP_CHANNEL_ID:
+
+        # ต้องมีไฟล์
+        if len(message.attachments) != 1:
+
+            await message.delete()
+
+            await message.channel.send(
+                f"{message.author.mention} ส่งได้เฉพาะรูปเดียว",
+                delete_after=5
+            )
+
+            return
+
+        attachment = message.attachments[0]
+
+        # ต้องเป็นรูป
+        if not attachment.content_type or not attachment.content_type.startswith("image"):
+
+            await message.delete()
+
+            await message.channel.send(
+                f"{message.author.mention} กรุณาส่งเฉพาะรูปภาพ",
+                delete_after=5
+            )
+
+            return
+
+        await message.reply(
+            "✅ ส่งสลิปแล้ว กรุณารอแอดมินตรวจสอบ"
+        )
+
+    await bot.process_commands(message)
+# ===============================
+# คำสั่งเช็คข้อความ Loop /testloop
+# ===============================
+
+@bot.tree.command(
+    name="testloop",
+    description="ทดสอบระบบข้อความวนซ้ำ"
+)
+async def testloop(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "ทดสอบระบบลูป...",
+        ephemeral=True
+    )
+    await hourly_loop()
 
 # ==================================================
 #  ระบบส่งข้อความลูปทุกๆ 1 ชั่วโมง (ระบบอั่งเปา)
 # ==================================================
-
-@bot.command()
-async def testloop(ctx):
-    await ctx.send("ทดสอบระบบลูป...")
-    await hourly_loop()
 
 last_messages = []
 
@@ -851,10 +1026,43 @@ async def hourly_loop():
     # ข้อความที่ 2 (รูป GIF 1 รูป)
     gif1 = await channel.send("https://i.postimg.cc/7Lt8PrZM/rainbow-water-falling.gif")
     last_messages = [msg1, gif1]
-# ================ TEST BOT ==================
-@bot.command()
-async def ping(ctx):
-    await ctx.send("pong")
+# ================ loop ROLE ==================
+@tasks.loop(seconds=10)
+async def remove_expired_roles():
+
+    now = discord.utils.utcnow().timestamp()
+
+    for user_id, data in list(temporary_roles.items()):
+
+        if now >= data["expire"]:
+
+            guild = bot.guilds[0]
+
+            member = guild.get_member(user_id)
+
+            role = guild.get_role(data["role_id"])
+
+            if member and role:
+                try:
+                    await member.remove_roles(role)
+                except discord.Forbidden:
+                    pass
+                except discord.HTTPException:
+                    pass
+
+            del temporary_roles[user_id]
+# ===============================
+# คำสั่ง TEST BOT /ping
+# ===============================
+@bot.tree.command(
+    name="ping",
+    description="ทดสอบว่าบอทตอบสนองหรือไม่"
+)
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "pong",
+        ephemeral=True
+    )
 # ================= RUN =================
 server_on()
 bot.run(os.getenv('TOKEN'))

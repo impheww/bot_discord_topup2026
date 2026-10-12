@@ -613,24 +613,28 @@ class PromptPayRoleSelect(discord.ui.Select):
         expire = int(discord.utils.utcnow().timestamp()) + 300
 
         embed = discord.Embed(
-            title="💳 ชำระผ่านพร้อมเพย์",
+            title="`💳` ชำระผ่านพร้อมเพย์",
             color=0x2B2D31
         )
 
         embed.add_field(
-            name="⏰ กรุณาชำระภายใน 5 นาที",
+            name="`⏰` กรุณาชำระภายใน 5 นาที",
             value=f"เหลือเวลา <t:{expire}:R>",
             inline=False
         )
 
         embed.add_field(
-            name="💰 จำนวนเงินที่ต้องชำระ",
+            name="`💰` จำนวนเงินที่ต้องชำระ",
             value=f"```{price:.2f} THB```",
             inline=False
         )
 
         embed.set_image(
             url="https://i.postimg.cc/Kz5LgWMv/QR-promtpay.jpg"
+        )
+
+        embed.set_footer(
+            text="ไม่คืนเงินทุกกรณี โปรดตรวจสอบความถูกต้อง!! หาก QR ไม่ขึ้นโปรดรีเฟรซ Discord หรือติดต่อแอดมิน"
         )
 
         await interaction.response.send_message(
@@ -677,7 +681,7 @@ class PriceView(discord.ui.View):
         super().__init__(timeout=60)
 
     @discord.ui.button(
-        label="เติมเงิน",
+        label="เติมเงิน/ซื้อยศ",
         emoji=discord.PartialEmoji(name="star1", id=1472134208993497202),
         style=discord.ButtonStyle.success
     )
@@ -724,7 +728,7 @@ class MainView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="เติมเงิน",
+        label="เติมเงิน/ซื้อยศ",
         emoji=discord.PartialEmoji(name="star1", id=1472134208993497202),
         style=discord.ButtonStyle.green
     )
@@ -887,7 +891,7 @@ async def shop(interaction: discord.Interaction):
         return
     # title อั่งเปา
     embed = discord.Embed(
-        title=" <a:bowl_pink:1484474337061765122> 𝐀𝐔𝐓𝐎 𝐁𝐔𝐘 𝐑𝐎𝐋𝐄 <a:bowl_pink:1484474337061765122>  (ชำระผ่านทรูวอเล็ทเท่านั้น)",
+        title=" <a:bowl_pink:1484474337061765122> 𝐀𝐔𝐓𝐎 𝐁𝐔𝐘 𝐑𝐎𝐋𝐄 <a:bowl_pink:1484474337061765122>  (รับทรูวอเล็ทเ/พร้อมเพย์)",
         description="> **<a:angpao:1472134389763932350> ระบบซื้อยศอัตโนมัติ [24 ชั่วโมง] ✨** ",
         color=discord.Color.red()
     )
@@ -897,11 +901,16 @@ async def shop(interaction: discord.Interaction):
     )
     # ข้อความข้างล่าง embed อั่งเปา + ไอคอนเซิร์ฟซ้ายล่าง
     embed.set_footer(
-        text="✅ ชำระผ่านซองอั่งเปายศเข้าตัวทันที 🔞",
+        text="✅ ชำระผ่านซองอั่งเปายศเข้าตัวทันที! 🔞",
         icon_url="https://media.discordapp.net/attachments/1478973402629935206/1483340274594877501/DOHEE_icon_png.png?ex=69be3048&is=69bcdec8&hm=c4674a41bb839e0f49652f7a00f2fcd78eaffb7ed418224d6e75e21a5e4a2368&=&format=webp&quality=lossless"
     )
 
     await interaction.response.send_message(
+        "`✅` เปิดร้านซื้อยศแล้วจ้า",
+        ephemeral=True
+    )
+
+    await interaction.followup.send(
         embed=embed,
         view=MainView()
     )

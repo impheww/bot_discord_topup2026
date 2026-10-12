@@ -48,12 +48,21 @@ async def on_ready():
     print("===================================")
     print(f"Bot Online: {bot.user}")
     print("===================================")
-    await bot.tree.sync()
+
+    try:
+        guild = discord.Object(id=1049286351993974794)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"Synced {len(synced)} commands to guild {guild.id}")
+        print([command.name for command in synced])
+    except Exception as e:
+        print(f"Slash command sync failed: {e}")
+
     if not hourly_loop.is_running():
         hourly_loop.start()
         print("✅ hourly_loop started")
-        if not remove_expired_roles.is_running():
-            remove_expired_roles.start()
+
+    if not remove_expired_roles.is_running():
+        remove_expired_roles.start()
 # =========== embed แจ้งเตือน/คนส่งลิ้งก์ ===========
 def create_payment_embed(member, amount, role, link=None, status="SUCCESS"):
     color = 0x00ff00 if status == "SUCCESS" else 0xff0000
